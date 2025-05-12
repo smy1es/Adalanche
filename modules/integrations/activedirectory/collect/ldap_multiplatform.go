@@ -221,18 +221,31 @@ func (ad *AD) Dump(do DumpOptions) ([]activedirectory.RawObject, error) {
 	}
 	var objects []activedirectory.RawObject
 	for {
-		request := ldap.NewSearchRequest(
-			do.SearchBase, // The base dn to search
-			do.Scope, ldap.NeverDerefAliases, 0, 0, false,
-			do.Query,      // The filter to apply
-			do.Attributes, // A list attributes to retrieve
-			controls,
-		)
-		response, err := ad.conn.Search(request)
-		if err != nil {
-			return objects, fmt.Errorf("failed to execute search request: %w", err)
+		const maxRetries = 3
+
+		for {
+			request := ldap.NewSearchRequest(
+				do.SearchBase, // The base dn to search
+				do.Scope, ldap.NeverDerefAliases, 0, 0, false,
+				do.Query,      // The filter to apply
+				do.Attributes, // A list attributes to retrieve
+				controls,
+			)
+
+			var response *ldap.SearchResult
+			var err error
+			for attempt := 1; attempt <= maxRetries; attempt++ {
+				response, err = ad.conn.Search(request)
+				if err == nil {
+					break
+				}
+				if attempt < maxRetries {
+					time.Sleep(time.Second * time.Duration(1<<uint(attempt-1))) // 1s, 2s, 4s
+					continue
+				}
+			return objects, fmt.Errorf("failed to execute search request after %d attempts: %w", attempt, err)
 		}
-		ui.Debug().Msgf("YOU ARE HERE")
+
 		// For a page of results, iterate through the reponse and pull the individual entries
 		for _, entry := range response.Entries {
 			ad.items++
