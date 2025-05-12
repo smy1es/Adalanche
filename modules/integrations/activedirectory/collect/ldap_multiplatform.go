@@ -223,6 +223,7 @@ func (ad *AD) Dump(do DumpOptions) ([]activedirectory.RawObject, error) {
 	for {
 		const maxRetries = 3
 
+		retrynotneeded:
 		for {
 			request := ldap.NewSearchRequest(
 				do.SearchBase, // The base dn to search
@@ -237,9 +238,10 @@ func (ad *AD) Dump(do DumpOptions) ([]activedirectory.RawObject, error) {
 			for attempt := 1; attempt <= maxRetries; attempt++ {
 				response, err = ad.conn.Search(request)
 				if err == nil {
-					break
+					break retrynotneeded
 				}
 				if attempt < maxRetries {
+					fmt.Fprintln(bufout, "Retrying LDAP query %d times",attempt)
 					time.Sleep(time.Second * time.Duration(1<<uint(attempt-1))) // 1s, 2s, 4s
 					continue
 				}
